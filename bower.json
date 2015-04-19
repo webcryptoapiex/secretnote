@@ -1,0 +1,31 @@
+{
+  "name": "WebCryptoAPI",
+  "version": "0.0.0",
+  "homepage": "https://github.com/Fincodr/WebCryptoAPI",
+  "authors": [
+    "Mika Luoma-aho <fincodr@mxl.fi>"
+  ],
+  "moduleType": [
+    "node"
+  ],
+  "license": "MIT",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "public/vendor",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "html5shiv": "~3.7.2",
+    "bootstrap": "~3.3.2",
+    "respond": "~1.4.2",
+    "lodash": "~3.6.0",
+    "font-awesome": "~4.3.0",
+    "moment": "~2.10.2",
+    "awesome-bootstrap-checkbox": "~0.3.4",
+    "bootstrap-select": "~1.6.4",
+    "js-base64": "~2.1.8"
+  }
+}
