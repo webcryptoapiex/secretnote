@@ -1,0 +1,86 @@
+body {
+  padding-top: 70px;
+  padding-bottom: 30px;
+  font-family: "Source Sans Pro","source-sans-pro","HelveticaNeue","Helvetica Neue",Helvetica,Arial,sans-serif;
+}
+
+.theme-dropdown .dropdown-menu {
+  position: static;
+  display: block;
+  margin-bottom: 20px;
+}
+
+.theme-notes > p > .btn {
+  margin: 5px 0;
+}
+
+.theme-notes .navbar .container {
+  width: auto;
+}
+
+.theme-notes .panel-debug-body {
+  display: block;
+  font-family: monospace;
+  white-space: pre;
+  margin: 0;
+  min-height: 350px;
+  max-height: 350px;
+  overflow-y: scroll;
+  font-size: 0.8em;
+  word-wrap: break-word;
+}
+
+.theme-notes .panel-identities-body, .theme-notes .panel-notes-body {
+  min-height: 200px;
+  max-height: 200px;
+  overflow-y: scroll;
+  word-wrap: break-word;
+}
+
+.theme-notes .list-group-item-pre {
+  display: block;
+  font-family: monospace;
+  white-space: pre;
+  margin: 0;
+  font-size: 0.6em;
+}
+
+.theme-notes table .clickable-row {
+  cursor: pointer;
+}
+
+.theme-notes table .id {
+  font-size: 0.9em;
+  padding-top: 0.75em;
+  font-family: monospace;
+}
+
+.theme-notes .textarea {
+  resize: none;
+}
+
+.theme-notes .textarea-input, .theme-notes .textarea-output {
+  resize: none;
+}
+
+.form-control[disabled], .form-control[readonly], fieldset[disabled] .form-control {
+  background-color: #fff;
+  cursor: text;
+}
+
+.theme-notes .panel-debug-body::before, .theme-notes .panel-debug-body::after {
+  display: none;
+}
+
+a:hover,
+a:focus,
+textarea:hover,
+input:hover,
+textarea:active,
+input:active,
+textarea:focus,
+input:focus {
+  outline:0 !important;
+  -webkit-appearance:none;
+  -moz-appearance:none;
+}

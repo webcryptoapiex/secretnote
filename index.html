@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+  // Copyright 2015 Mika "Fincodr" Luoma-aho
+  // Provided under the MIT license. See LICENSE file for details.
+  -->
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SecretNote</title>
+
+    <!-- Source Code Pro font -->
+    <link href="fonts/sourcesanspro.css" rel="stylesheet">
+
+    <!-- Bootstrap -->
+    <link href="vendor/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="vendor/bootstrap/dist/css/bootstrap-theme.min.css" rel="stylesheet">
+    <link href="vendor/bootstrap-select/dist/css/bootstrap-select.min.css" rel="stylesheet">
+    <link href="vendor/awesome-bootstrap-checkbox/awesome-bootstrap-checkbox.css" rel="stylesheet">
+
+    <!-- Font Awesome Icons -->
+    <link href="vendor/font-awesome/css/font-awesome.min.css" rel="stylesheet" >
+
+    <!-- Our styles -->
+    <link href="css/style.css" rel="stylesheet">
+
+    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+      <script src="vendor/html5shiv/dist/html5shiv.min.js"></script>
+      <script src="vendor/respond/dest/respond.min.js"></script>
+    <![endif]-->
+
+  </head>
+
+  <body role="document">
+
+    <!-- Modals -->
+
+    <!-- decryptNote -->
+    <div class="modal fade theme-notes" id="modalDecryptNote" tabindex="-1" role="dialog">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="myModalLabel"><i class="fa fa-envelope fa-2x"></i> Decrypted note</h4>
+          </div>
+          <div class="modal-body">
+            <h3><label for="modalDecryptSenderName">Sender:</label> <span class="label" id="modalDecryptSenderName"></span></h3>
+            <div class="row">
+              <label class="col-sm-3">Encryption-Key fingerprint:</label>
+              <span id="modalDecryptSenderFingerprint"></span><br />
+            </div>
+            <div class="row">
+              <label class="col-sm-3">Signing-key fingerprint:</label>
+              <span id="modalDecryptSignerFingerprint"></span><br />
+            </div>
+            <!-- sender notices -->
+            <div class="alert alert-danger hide" id="modalDecryptSenderNotKnown">
+              <p><i class="glyphicon glyphicon-alert"></i> <b>Warning:</b> Sender not known!</p>
+              <p>
+                <button type="button" class="btn btn-default" id="btnDecryptAddToKnownSenders">Add this sender to known senders</button>
+              </p>
+            </div>
+            <div class="alert alert-info hide" id="modalDecryptSenderNotTrusted">
+              <p><i class="glyphicon glyphicon-alert"></i> <b>Warning:</b> Sender is known but not trusted.</p>
+              <p>
+                <button type="button" class="btn btn-default" id="btnDecryptTrustSender">Trust this sender</button>
+              </p>
+            </div>
+            <div class="alert alert-success hide" id="modalDecryptSenderTrusted">
+              <p><i class="glyphicon glyphicon-info"></i> <b>Sender is trusted.</b> <a href="#" id="btnDecryptRevokeTrustSender">Revoke trust</a></p>
+            </div>
+            <!-- digital signature notices -->
+            <div class="alert alert-danger hide" id="modalDecryptNoDigitalSignature">
+              <p><i class="glyphicon glyphicon-alert"></i> <b>Warning:</b> Digital Signature not found. Sender identity cannot be verified.</p>
+            </div>
+            <div class="alert alert-danger hide" id="modalDecryptDigitalSignatureInvalid">
+              <p><i class="glyphicon glyphicon-alert"></i> <b>Digital Signature is invalid!</b> </p>
+            </div>
+            <div class="alert alert-info hide" id="modalDecryptDigitalSignatureValidButNotTrusted">
+              <p><i class="glyphicon glyphicon-alert"></i> <b>Warning:</b> Digital Signature is valid but key used for signing is not current.</p>
+              <p>
+                <button type="button" class="btn btn-default" id="btnDecryptTrustSigningKey">Trust this key</button>
+              </p>
+            </div>
+            <div class="alert alert-success hide" id="modalDecryptDigitalSignatureValid">
+              <p><b>Digital Signature is valid.</b></p>
+            </div>
+            <form role="form">
+              <div class="form-group">
+                <label for="exampleInputText">Note contents:</label>
+                <textarea type="text" rows="15" class="form-control textarea" id="outputNote" placeholder="contents" disabled></textarea>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- createNote -->
+    <div class="modal fade theme-notes" id="modalCreateNote" tabindex="-1" role="dialog">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="myModalLabel"><i class="fa fa-envelope fa-2x"></i> Create note</h4>
+          </div>
+          <div class="modal-body">
+            <form role="form">
+              <div class="form-group">
+                <label for="selectRecipientList">Recipient identity:</label>
+                <select class="selectpicker" data-width="auto" data-live-search="true" data-show-subtext="true" id="selectRecipientList">
+                </select>
+                <p class="help-block">Please note that only the selected recipient identity can read the note, provided that the recipient have the private-key for the identity.</p>
+              </div>
+              <div class="form-group">
+                <label for="exampleInputText">Note contents:</label>
+                <textarea type="text" rows="7" class="form-control textarea" id="inputNote" placeholder="contents"></textarea>
+              </div>
+              <div class="alert alert-success hide" id="createNoteSignDigitally">
+                <p><i class="glyphicon glyphicon-info"></i> If you digitally sign the note, the recipient can verify that your identity was used to sign the note. Please note that it also means that the note is not anonymous anymore since the recipient knows who sent the note. As a bonus the recipient also receives your public-key so that the recipient can reply to your note.</p>
+                <div class="checkbox">
+                  <input type="checkbox" id="checkboxDigitallySign">
+                  <label for="checkboxDigitallySign">Digitally sign</label>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="btnCreateNoteSave">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- generateIdentity -->
+    <div class="modal fade theme-notes" id="modalGenerateIdentity" tabindex="-1" role="dialog">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="myModalLabel"><i class="fa fa-key fa-2x"></i> Create identity</h4>
+          </div>
+          <div class="modal-body">
+            <form role="form">
+              <p>
+                Creating an <b>identity</b> allows you to digitally sign sent message and receive messages from other users.
+              </p>
+              <!-- Tab panes -->
+              <div class="form-group">
+                <label for="inputName">Anonymous name</label>
+                <input type="text" class="form-control" id="inputName" placeholder="Enter name">
+                <p class="help-block">Please note that you never should disclose anything personal like your real name or email here.</p>
+              </div>
+              <div class="alert alert-success">
+                <i class="glyphicon glyphicon-info-sign"></i> Your identity has public and private side. You can safely share your public identity to anybody, but you must keep the private part secret to protect your identity.
+              </div>
+              <div class="alert alert-danger">
+                <p>
+                  <i class="glyphicon glyphicon-alert"></i> If you make this identity exportable, you can share it (manually) with your other computer or device.
+                </p>
+                <div class="checkbox">
+                  <input type="checkbox" id="checkboxExportable">
+                  <label for="checkboxExportable">Make this identity exportable</label>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="btnGenerateIdentitySave">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- importIdentity -->
+    <div class="modal fade theme-notes" id="modalImportIdentity" tabindex="-1" role="dialog">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="myModalLabel"><i class="fa fa-key fa-2x"></i> Import identity</h4>
+          </div>
+          <div class="modal-body">
+            <form role="form">
+              <p>
+                Importing an <b>private identity</b> allows you to digitally sign sent message and receive messages from other users. Importing an <b>public identity</b> allows you to send messages to the user.
+              </p>
+              <div class="form-group">
+                <label for="importIdentityName">Anonymous name</label>
+                <input type="text" class="form-control" id="importIdentityName" placeholder="Enter name">
+                <p class="help-block">Please note that you never should disclose anything personal like your real name or email here.</p>
+              </div>
+              <div class="alert alert-success">
+                <i class="glyphicon glyphicon-info-sign"></i> Your <b>private identity</b> has public and private side. You can safely share your public identity to anybody, but you must keep the private part secret to protect your identity. <b>public identity</b> only has public side.
+              </div>
+              <div class="form-group textarea">
+                <label for="importIdentityData">Identity</label>
+                <textarea type="text" rows="15" class="form-control textarea" id="importIdentityData" placeholder="Paste your identity here"></textarea>
+              </div>
+              <div class="alert alert-danger">
+                <p>
+                  <i class="glyphicon glyphicon-alert"></i> If you make this identity exportable, you can share it (manually) with your other computer or device.
+                </p>
+                <div class="checkbox checkbox-danger">
+                <input type="checkbox" id="checkboxImportExportable">
+                <label for="checkboxImportExportable">Make this identity exportable</label>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="btnImportIdentitySave">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- exportIdentity -->
+    <div class="modal fade theme-notes" id="modalExportIdentity" tabindex="-1" role="dialog">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title" id="myModalLabel"><i class="fa fa-key fa-2x"></i> Export identity</h4>
+          </div>
+          <div class="modal-body">
+            <form role="form">
+              <p>
+                Exporting an <b>identity</b> allows you to use the same identity on some other computer or device.
+              </p>
+              <h3><label for="modalExportIdentityName">Name:</label> <span class="label label-success" id="modalExportIdentityName"></span></h3>
+              <div class="row">
+                <label class="col-sm-3">Encryption-Key fingerprint:</label>
+                <span id="modalExportIdentityKeyFingerprint"></span><br />
+              </div>
+              <div class="row">
+                <label class="col-sm-3">Signing-key fingerprint:</label>
+                <span id="modalExportIdentitySigningFingerprint"></span><br />
+              </div>
+              <div class="form-group">
+                <label for="exampleInputText">Exported identity:</label>
+                <textarea type="text" rows="15" class="form-control textarea" id="outputIdentity" placeholder="contents" disabled></textarea>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fixed navbar -->
+    <nav class="navbar navbar-inverse navbar-fixed-top">
+      <div class="container">
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="navbar-brand" href="#">SecretNotes</a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+          <ul class="nav navbar-nav">
+            <li class="active"><a href="#notes" role="tab" data-toggle="tab">Notes</a></li>
+            <li><a href="#identities" role="tab" data-toggle="tab">Identities</a></li>
+            <li><a href="#about" role="tab" data-toggle="tab">About</a></li>
+            <li><a href="#debug" role="tab" data-toggle="tab"><i class="fa fa-bug"></i></a></li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container theme-notes" role="main">
+
+      <!-- Tab panes -->
+      <div class="tab-content">
+        <div role="tabpanel" class="tab-pane fade in active" id="notes">
+          <div class="jumbotron hidden" id="notifyCreateIdentity">
+            <h1>Secret Notes</h1>
+            <p>Welcome! Please create new identity to start using Secret Notes!</p>
+            <p><a class="btn btn-primary btn-lg" href="#" role="button" id="btnConfigureKeys" data-toggle="modal" data-target="#modalGenerateIdentity">Create identity</a></p>
+          </div>
+          <div class="jumbotron hidden" id="notifySelectIdentity">
+            <h1>Secret Notes</h1>
+            <p>Welcome! Please select your identity to start using Secret Notes!</p>
+            <p><a class="btn btn-primary btn-lg" href="#identities" role="button" id="btnSelectKeys">Select identity</a></p>
+          </div>
+          <div id="notesSection" class="hidden">
+            <div class="page-header">
+              <h2>Notes</h2>
+              <p><a class="btn btn-default" href="#" role="button" id="btnCreateNote">Create new note</a></p>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <caption>List of messages that only you can read with your private key.</caption>
+                <thead>
+                  <tr>
+                    <th>Created</th>
+                    <th>Expires</th>
+                    <th>ID</th>
+                    <!--<th>Status</td>-->
+                  </tr>
+                </thead>
+                <tbody id="notesTableBody">
+                </tbody>
+              </table>
+            </div>
+            <p>
+              <div id="notesTableFooter"></div>
+            </p>
+          </div>
+        </div>
+        <div role="tabpanel" class="tab-pane fade" id="identities">
+          <div class="page-header">
+            <h2>Your identities</h2>
+            <p>
+              <a class="btn btn-default" href="#" role="button" id="btnConfigureKeys" data-toggle="modal" data-target="#modalGenerateIdentity">Create identity</a>
+              <a class="btn btn-default" href="#" role="button" id="btnImportKeys" data-toggle="modal" data-target="#modalImportIdentity">Import identity</a>
+            </p>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Fingerprint</th>
+                  <th>Usage</td>
+                  <th>Operations</td>
+                </tr>
+              </thead>
+              <tbody id="privateKeysTableBody">
+              </tbody>
+            </table>
+          </div>
+          <div class="page-header">
+            <h2>Known identities</h2>
+            <p>
+              <a class="btn btn-default" href="#" role="button" id="btnImportKnownIdentity" data-toggle="modal" data-target="#modalImportIdentity">Import known identity</a>
+            </p>
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Fingerprint</th>
+                    <th>Usage</td>
+                    <th>Operations</td>
+                  </tr>
+                </thead>
+                <tbody id="publicKeysTableBody">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div role="tabpanel" class="tab-pane fade" id="about">
+          <div class="page-header">
+            <h2>About</h2>
+          </div>
+          <div class="page-header">
+            <h2>Help</h2>
+          </div>
+          <div class="page-header">
+            <h2>MIT License</h2>
+            <pre>The MIT License (MIT)
+
+Copyright (c) 2015 Mika "Fincodr" Luoma-aho
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+          </div>
+        </div>
+        <div role="tabpanel" class="tab-pane fade" id="debug">
+          <div class="row">
+            <div class="col-md-6">
+              <div class="panel panel-warning">
+                <div class="panel-heading clearfix">
+                  <h4 class="panel-title pull-left" style="padding-top: 7.5px">Key storage</h4>
+                  <div class="btn-group pull-right">
+                    <a id="btnRemoveKey" class="btn btn-default btn-sm">Remove</a>
+                    <a id="btnClearKeys" class="btn btn-default btn-sm">Clear</a>
+                  </div>
+                </div>
+                <div class="panel-body panel-identities-body">
+                  <div class="list-group" id="debugIdentities">
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="panel panel-warning">
+                <div class="panel-heading clearfix">
+                  <h4 class="panel-title pull-left" style="padding-top: 7.5px">Note storage</h4>
+                  <div class="btn-group pull-right">
+                    <a id="btnRemoveNote" class="btn btn-default btn-sm">Remove</a>
+                    <a id="btnClearNotes" class="btn btn-default btn-sm">Clear</a>
+                  </div>
+                </div>
+                <div class="panel-body panel-notes-body">
+                  <div class="list-group" id="debugNotes">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6">
+              <div class="panel panel-success">
+                <div class="panel-heading clearfix">
+                  <h4 class="panel-title pull-left" style="padding-top: 7.5px">Input</h4>
+                  <div class="btn-group pull-right">
+                    <a id="btnDefaultInput" class="btn btn-default btn-sm">Default</a>
+                    <a id="btnClearInput" class="btn btn-default btn-sm">Clear</a>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <form role="form">
+                    <div class="form-group">
+                      <label for="name" class="sr-only">Input text</label>
+                      <textarea class="form-control textarea-input" rows="7" id="input"></textarea>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="panel panel-info">
+                <div class="panel-heading clearfix">
+                  <h4 class="panel-title pull-left" style="padding-top: 7.5px">Output</h4>
+                  <div class="btn-group pull-right">
+                    <a id="btnSwapOutputWithInput" class="btn btn-default btn-sm">Swap</a>
+                    <a id="btnSaveOutput" class="btn btn-default btn-sm">Save</a>
+                    <a id="btnClearOutput" class="btn btn-default btn-sm">Clear</a>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <form role="form">
+                    <div class="form-group">
+                      <label for="name" class="sr-only">Output text</label>
+                      <textarea class="form-control textarea-output" rows="7" id="output" disabled></textarea>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-12">
+              <h4>Actions</h4>
+              <p>
+                <div class="btn-group" role="group" aria-label="...">
+                  <button type="button" class="btn btn-default" id="btnEncrypt">encrypt</button>
+                  <button type="button" class="btn btn-default" id="btnDecrypt">decrypt</button>
+                  <button type="button" class="btn btn-default" id="btnSign">sign</button>
+                  <button type="button" class="btn btn-default" id="btnVerify">verify</button>
+                  <button type="button" class="btn btn-default" id="btnDigest">digest</button>
+                  <button type="button" class="btn btn-default" data-toggle="modal" data-target="#modalGenerateIdentity" id="btnGenerateIdentity">generateIdentity</button>
+                  <button type="button" class="btn btn-default" data-toggle="modal" data-target="#modalImportIdentity" id="btnImportIdentity">importIdentity</button>
+                  <!--<button type="button" class="btn btn-default" id="btnImportKnownIdentity">importKnownIdentity</button>-->
+                  <button type="button" class="btn btn-default" id="btnExportKey">exportKey</button>
+                  <button type="button" class="btn btn-default" id="btnExportIdentity">exportIdentity</button>
+                  <!--<button type="button" class="btn btn-default">deriveKey</button>
+                  <button type="button" class="btn btn-default">deriveBits</button>
+                  <button type="button" class="btn btn-default">wrapKey</button>
+                  <button type="button" class="btn btn-default">unwrapKey</button>-->
+                </div>
+              </p>
+            </div>
+          </div>
+
+          <div class="row">
+            <br />
+            <div class="col-md-12">
+              <div class="panel panel-default">
+                <div class="panel-heading clearfix">
+                  <h4 class="panel-title pull-left" style="padding-top: 7.5px">Console</h4>
+                  <div class="btn-group pull-right">
+                    <a id="btnClearDebug" class="btn btn-default btn-sm">Clear</a>
+                  </div>
+                </div>
+                <div class="panel-body panel-debug-body" id="console"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="vendor/jquery/dist/jquery.min.js"></script>
+    <!-- Include all compiled plugins (below), or include individual files as needed -->
+    <script src="vendor/bootstrap/dist/js/bootstrap.min.js"></script>
+    <script src="vendor/bootstrap-select/dist/js/bootstrap-select.min.js"></script>
+    <!-- moment -->
+    <script src="vendor/moment/min/moment.min.js"></script>
+    <!-- lodash -->
+    <script src="vendor/lodash/lodash.min.js"></script>
+    <!-- Include our modules -->
+    <script src="js/modules/cryptography.js"></script>
+    <script src="js/modules/backend.js"></script>
+    <script src="js/modules/debug.js"></script>
+    <script src="js/modules/utils.js"></script>
+    <!-- Include our main script last -->
+    <script src="js/app.js"></script>
+  </body>
+</html>
