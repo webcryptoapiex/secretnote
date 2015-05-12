@@ -1,1 +1,1 @@
-# secretnode-standalone
+# secretnote (standalone) version
