@@ -1,0 +1,6 @@
+.DS_Store
+public/vendor
+node_modules
+trash
+extra
+sslcert/server*

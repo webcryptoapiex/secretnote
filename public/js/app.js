@@ -13,16 +13,21 @@
     var utils = app.utils;
     var debug = app.debug;
     var cryptography = app.cryptography;
-    var keyStorage = new app.Backend('PrivateKeys', 'store', ['name', 'publicKeyFingerprint', 'verifyKeyFingerprint'], 'name');
-    var noteStorage = new app.Backend('PrivateNotes', 'store', ['publicKeyFingerprint', 'created', 'id'], 'created');
+    var keyStorage = new app.BackendLocal('PrivateKeys', 'store', ['name', 'publicKeyFingerprint', 'verifyKeyFingerprint'], 'name');
+    var noteStorage;
+    if (app.config.useServerBackend) {
+      noteStorage = new app.BackendRemote(app.config.remoteAddress, 'notes');
+    } else {
+      noteStorage = new app.BackendLocal('PrivateNotes', 'store', ['publicKeyFingerprint', 'created', 'id'], 'created');
+    }
 
     // test data
     var Message = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
 
     var SNPG_PRV_HEADER = '-- BEGIN SECRETNOTE PRIVATE KEY BLOCK --\n-- Ver: SNPG v1.0.0.0 --\n';
-    var SNPG_PRV_FOOTER = '-- END SECRETNOTE PRIVATE KEY BLOCK --\n';
+    var SNPG_PRV_FOOTER = '-- END SECRETNOTE PRIVATE KEY BLOCK --';
     var SNPG_PUB_HEADER = '-- BEGIN SECRETNOTE PUBLIC KEY BLOCK --\n-- Ver: SNPG v1.0.0.0 --\n';
-    var SNPG_PUB_FOOTER = '-- END SECRETNOTE PUBLIC KEY BLOCK --\n';
+    var SNPG_PUB_FOOTER = '-- END SECRETNOTE PUBLIC KEY BLOCK --';
 
     // global algorithm settings
     var symmetricAlgorithm = {
@@ -40,13 +45,13 @@
     };
 
     var signingAlgorithm = {
-      name: "RSA-PSS",
+      name: "RSASSA-PKCS1-v1_5", // RSA-PSS (not supported in linux chrome)
       modulusLength: 2048, // 1024, 2048, 4096
       publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
       hash: {
         name: "SHA-256" // "SHA-1", "SHA-256", "SHA-384", "SHA-512"
       },
-      saltLength: 128, //the length of the salt
+      //saltLength: 128, //the length of the salt (only for RSA-PSS)
     };
 
     var digestAlgorithm = {
@@ -93,7 +98,9 @@
           module.setTargetIdentity(obj);
           module.activeIdentity = obj;
           module.refreshNotes();
-          module.decrypt();
+          if (obj) {
+            module.decrypt();
+          }
           if (module.identitiesCount!==0) {
             // Check if we have any identity selected
             if (module.activeIdentity) {
@@ -112,12 +119,17 @@
         setActiveNote: function(obj) {
           return new Promise(function(resolve, reject) {
             module.activeNote = obj;
-            $('#input').val(obj.data);
-            module.decrypt().then(function(result){
-              var output = $('#output').val();
-              $('#outputNote').val(output);
-              resolve(result);
-            });
+            if (obj) {
+              $('#input').val(obj.data);
+              module.decrypt().then(function(result){
+                module.activeNote.result = result;
+                var output = $('#output').val();
+                $('#outputNote').val(output);
+                resolve(result);
+              });
+            } else {
+              reject();
+            }
           });
         },
 
@@ -150,13 +162,15 @@
         refreshNotes: function() {
           // Update notes view (notes for active identity)
           var $notes = $('#notesTableBody');
-          $notes.empty();
           var $notesFooter = $('#notesTableFooter');
-          $notesFooter.empty();
+          // Update debug view (all notes)
+          var $debugNotes = $('#debugNotes');
           var notesCount = 0;
           var now = moment();
           if (module.activeIdentity) {
-            noteStorage.getAllData().then(function(data){
+            noteStorage.getAllData(module.activeIdentity.publicKeyFingerprint).then(function(data){
+              $debugNotes.empty();
+              $notes.empty();
               _.forEach(data, function(obj){
                 if (utils.compareTwoUint8Arrays(module.activeIdentity.publicKeyFingerprint, obj.publicKeyFingerprint)) {
                   notesCount++;
@@ -166,7 +180,7 @@
                   var $el = $('<tr class="clickable-row">' +
                     '<td>' + created.toISOString() + '</td>' +
                     '<td>in ' + diff + ' hour(s)</td>' +
-                    '<td class="id">' + utils.convertUint8ArrayToHex(obj.id, ':') + '</td>' +
+                    '<td class="id"><a href="#' + utils.convertUint8ArrayToHex(obj.id) + '">'  + utils.convertUint8ArrayToHex(obj.id, ':') + '</a></td>' +
                     //'<td><span class="label label-danger">not signed</span></td>' +
                   '</tr>');
                   $notes.append($el);
@@ -178,35 +192,28 @@
                   });
                 }
               });
+              $notesFooter.empty();
               $notesFooter.html('Total of ' + notesCount + ' note(s)');
+              _.forEach(data, function(obj){
+                // Append debug
+                var $el = $('<a href="#" class="list-group-item">' +
+                    'ID: <div class="list-group-item-pre">' + utils.convertUint8ArrayToHex(obj.id, ':') + '</div>' +
+                    'PublicKey fingerprint: <div class="list-group-item-pre">' + utils.convertUint8ArrayToHex(obj.publicKeyFingerprint, ':') + '</div>' +
+                    'Created: <div class="list-group-item-pre">' + obj.created + '</div>' +
+                    'Expires: <div class="list-group-item-pre">' + obj.expires + '</div>' +
+                  '</a>');
+                $debugNotes.append($el);
+                $el.click(function(){
+                  // set active
+                  $debugNotes.find('a').removeClass('active');
+                  $el.addClass('active');
+                  module.setActiveNote(obj);
+                });
+              });
             }).catch(function(err){
               console.log(err);
             });
           }
-
-          // Update debug view (all notes)
-          var $debugNotes = $('#debugNotes');
-          noteStorage.getAllData().then(function(data){
-            $debugNotes.empty();
-            _.forEach(data, function(obj){
-              // Append debug
-              var $el = $('<a href="#" class="list-group-item">' +
-                  'ID: <div class="list-group-item-pre">' + utils.convertUint8ArrayToHex(obj.id, ':') + '</div>' +
-                  'PublicKey fingerprint: <div class="list-group-item-pre">' + utils.convertUint8ArrayToHex(obj.publicKeyFingerprint, ':') + '</div>' +
-                  'Created: <div class="list-group-item-pre">' + obj.created + '</div>' +
-                  'Expires: <div class="list-group-item-pre">' + obj.expires + '</div>' +
-                '</a>');
-              $debugNotes.append($el);
-              $el.click(function(){
-                // set active
-                $debugNotes.find('a').removeClass('active');
-                $el.addClass('active');
-                module.setActiveNote(obj);
-              });
-            });
-          }).catch(function(err){
-            console.log(err);
-          });
         },
 
         openDecryptModal: function(obj) {
@@ -214,7 +221,7 @@
           .then(function(result){
             // find identity and match fingerprint
             module.setTargetIdentity(null);
-            if (result.publicKeyFingerprint) {
+            if (result.hasPublicKey) {
               _.forEach(module.identities, function(test) {
                 if (utils.compareTwoUint8Arrays(test.publicKeyFingerprint, result.publicKeyFingerprint)) {
                   module.setTargetIdentity(test);
@@ -231,8 +238,13 @@
             $('#modalDecryptSenderNotTrusted').removeClass('show').addClass('hide');
             $('#modalDecryptSenderTrusted').removeClass('show').addClass('hide');
 
+            $('#modalDecryptSenderFingerprint').html('(anonymous sender)');
+            $('#modalDecryptSignerFingerprint').html('(no digital signature)');
+
+            // if sender is known
             if (module.targetIdentity) {
-              // sender known
+
+              // if sender is trusted
               if (module.targetIdentity.trusted) {
                 $('#modalDecryptSenderTrusted').addClass('show');
                 $('#modalDecryptSenderName').addClass('label-success').removeClass('label-warning').removeClass('label-danger');
@@ -240,12 +252,23 @@
                 $('#modalDecryptSenderNotTrusted').addClass('show');
                 $('#modalDecryptSenderName').addClass('label-warning').removeClass('label-danger').removeClass('label-danger');
               }
+
+              // show sender nick
               $('#modalDecryptSenderName').html(module.targetIdentity.name);
+
+              // show fingerprints
               $('#modalDecryptSenderFingerprint').html(utils.convertUint8ArrayToHex(result.publicKeyFingerprint, ':'));
-              $('#modalDecryptSignerFingerprint').html(utils.convertUint8ArrayToHex(result.verifyKeyFingerprint, ':'));
+              if (result.hasSignature) {
+                $('#modalDecryptSignerFingerprint').html(utils.convertUint8ArrayToHex(result.verifyKeyFingerprint, ':'));
+              }
+
               // update modal infos
-              var digitalSignatureKeyKnown = utils.compareTwoUint8Arrays(module.targetIdentity.verifyKeyFingerprint, result.verifyKeyFingerprint);
-              if (result.digitalSignature.length!==0) {
+              var digitalSignatureKeyKnown = false;
+              if (result.hasSignature && module.targetIdentity.verifyKeyFingerprint) {
+                digitalSignatureKeyKnown = utils.compareTwoUint8Arrays(module.targetIdentity.verifyKeyFingerprint, result.verifyKeyFingerprint);
+              }
+
+              if (result.hasSignature) {
                 if (result.digitalSignatureValid && digitalSignatureKeyKnown) {
                   // signature and key is ok
                   $('#modalDecryptDigitalSignatureValid').removeClass('hide').addClass('show');
@@ -261,12 +284,21 @@
                 $('#modalDecryptNoDigitalSignature').removeClass('hide').addClass('show');
               }
             } else {
-              // sender not known
-              $('#modalDecryptSenderNotKnown').addClass('show');
-              $('#modalDecryptSenderName').html('UNKNOWN');
-              $('#modalDecryptSenderName').addClass('label-danger').removeClass('label-success').removeClass('label-warning');
-              $('#modalDecryptSenderFingerprint').html(utils.convertUint8ArrayToHex(result.publicKeyFingerprint, ':'));
-              $('#modalDecryptSignerFingerprint').html(utils.convertUint8ArrayToHex(result.verifyKeyFingerprint, ':'));
+              if (result.hasPublicKey) {
+                // sender is not known
+                $('#modalDecryptSenderName').html('UNKNOWN');
+                $('#modalDecryptSenderName').addClass('label-warning').removeClass('label-success').removeClass('label-danger');
+                $('#modalDecryptSenderNotKnown').addClass('show').removeClass('hide');
+                // show fingerprints
+                $('#modalDecryptSenderFingerprint').html(utils.convertUint8ArrayToHex(result.publicKeyFingerprint, ':'));
+                if (result.hasSignature) {
+                  $('#modalDecryptSignerFingerprint').html(utils.convertUint8ArrayToHex(result.verifyKeyFingerprint, ':'));
+                }
+              } else {
+                // sender is anonymous
+                $('#modalDecryptSenderName').html('ANONYMOUS');
+                $('#modalDecryptSenderName').addClass('label-danger').removeClass('label-success').removeClass('label-warning');
+              }
             }
 
             // show modal
@@ -276,113 +308,136 @@
 
         refreshIdentities: function() {
           // Load keyStorage information
-          module.identitiesCount = 0;
-          module.identities = [];
-          var $debugIdentities = $('#debugIdentities');
-          var $privateIdentities = $('#privateKeysTableBody');
-          var $publicIdentities = $('#publicKeysTableBody');
-          keyStorage.getAllData().then(function(data){
-            $debugIdentities.empty();
-            $privateIdentities.empty();
-            $publicIdentities.empty();
-            module.identitiesCount = data.length;
-            if (module.identitiesCount!==0) {
-              $('#notifyCreateIdentity').addClass('hidden');
-            } else {
-              $('#notifyCreateIdentity').removeClass('hidden');
-            }
-            _.forEach(data, function(obj){
-              module.identities.push(obj);
-              var isPrivateIdentity = false;
-              var usages = [];
-              if (obj.publicKey) {
-                usages = _.union(usages, obj.publicKey.usages);
-              }
-              if (obj.privateKey) {
-                usages = _.union(usages, obj.privateKey.usages);
-                isPrivateIdentity = true;
-              }
-              if (obj.signingKey) {
-                usages = _.union(usages, obj.signingKey.usages);
-                isPrivateIdentity = true;
-              }
-              if (obj.verifyKey) {
-                usages = _.union(usages, obj.verifyKey.usages);
-              }
-              var usageLabels = '';
-              var types = {
-                'encrypt': 'success',
-                'decrypt': 'danger',
-                'sign': 'info',
-                'verify': 'info'
-              };
-              _.forEach(usages, function(usage){
-                var type = types[usage] || 'default';
-                usageLabels += ' <span class="label label-' + type + '">' + usage + '</span>';
-              });
-
-              var publicKeyFingerprint = utils.convertUint8ArrayToHex(obj.publicKeyFingerprint, ':');
-              var verifyKeyFingerprint = obj.verifyKeyFingerprint?utils.convertUint8ArrayToHex(obj.verifyKeyFingerprint, ':'):'(no verify key)';
-
-              // append identities (private and public)
-              var $el1 = $('<tr class="clickable-row">' +
-                '<td>' + obj.name + '</td>' +
-                '<td class="id">' +
-                  publicKeyFingerprint + '<br />' +
-                  verifyKeyFingerprint +
-                '</td>' +
-                '<td>' + usageLabels + '</td>' +
-                '<td class="pull-center"><a data-action="delete" href="#"><i class="glyphicon glyphicon-trash"></i></a>' +
-                '&nbsp; &nbsp; <a data-action="export" href="#"><i class="glyphicon glyphicon-save"></i></a></td>' +
-              '</tr>');
-              if (isPrivateIdentity) {
-                $privateIdentities.append($el1);
-              } else {
-                $publicIdentities.append($el1);
-              }
-              $el1.click(function(e){
-                if ($(e.target).parent().data('action') == 'delete') {
-                  // delete
-                  keyStorage.deleteFirst(obj.name).then(function(){
-                    module.refreshIdentities();
+          return new Promise(function(done, fail) {
+            module.identitiesCount = 0;
+            module.identities = [];
+            var $debugIdentities = $('#debugIdentities');
+            var $privateIdentities = $('#privateKeysTableBody');
+            var $publicIdentities = $('#publicKeysTableBody');
+            keyStorage.getAllData().then(function(data) {
+              $debugIdentities.empty();
+              $privateIdentities.empty();
+              $publicIdentities.empty();
+              module.identitiesCount = data.length;
+              if (module.identitiesCount!==0) {
+                _.forEach(data, function(obj){
+                  module.identities.push(obj);
+                  var isPrivateIdentity = false;
+                  var usages = [];
+                  if (obj.publicKey) {
+                    usages = _.union(usages, obj.publicKey.usages);
+                  }
+                  if (obj.privateKey) {
+                    usages = _.union(usages, obj.privateKey.usages);
+                    isPrivateIdentity = true;
+                  }
+                  if (obj.signingKey) {
+                    usages = _.union(usages, obj.signingKey.usages);
+                    isPrivateIdentity = true;
+                  }
+                  if (obj.verifyKey) {
+                    usages = _.union(usages, obj.verifyKey.usages);
+                  }
+                  var usageLabels = '';
+                  var types = {
+                    'encrypt': 'success',
+                    'decrypt': 'danger',
+                    'sign': 'info',
+                    'verify': 'info'
+                  };
+                  _.forEach(usages, function(usage){
+                    var type = types[usage] || 'default';
+                    usageLabels += ' <span class="label label-' + type + '">' + usage + '</span>';
                   });
-                  e.preventDefault();
-                } else if ($(e.target).parent().data('action') == 'export') {
-                  // export
-                  module.setActiveIdentity(obj);
-                  module.exportIdentity();
-                  e.preventDefault();
-                } else {
-                  // set active
-                  $privateIdentities.find('tr').removeClass('info');
-                  $el1.addClass('info');
-                  module.setActiveIdentity(obj);
-                  $('#navbar a[href="#notes"]').tab('show');
-                }
-              });
 
-              // append debug
-              var $el2 = $('<a href="#" class="list-group-item">' +
-                '<h4 class="list-group-item-heading">' + obj.name + '</h4>' + usageLabels +
-                '<div class="list-group-item-pre">' + publicKeyFingerprint + '</div>' +
-                '<div class="list-group-item-pre">' + verifyKeyFingerprint + '</div>' +
-              '</a>');
+                  var publicKeyFingerprint = _.has(obj, 'publicKeyFingerprint')?obj.publicKeyFingerprint:undefined;
+                  var verifyKeyFingerprint = _.has(obj, 'verifyKeyFingerprint')?obj.verifyKeyFingerprint:undefined;
+                  var publicKeyFingerprintHex = publicKeyFingerprint?utils.convertUint8ArrayToHex(publicKeyFingerprint, ':'):'(no public key)';
+                  var verifyKeyFingerprintHex = verifyKeyFingerprint?utils.convertUint8ArrayToHex(verifyKeyFingerprint, ':'):'(no verify key)';
 
-              $debugIdentities.append($el2);
-              $el2.click(function(){
-                // set active
-                $debugIdentities.find('a').removeClass('active');
-                $el2.addClass('active');
-                module.setActiveIdentity(obj);
-              });
-              module.setActiveIdentity(null);
+                  // append identities (private and public)
+                  var $el1 = $('<tr class="clickable-row">' +
+                    '<td>' + obj.name + '</td>' +
+                    '<td class="id">' +
+                      publicKeyFingerprintHex + '<br />' +
+                      verifyKeyFingerprintHex +
+                    '</td>' +
+                    '<td>' + usageLabels + '</td>' +
+                    '<td class="pull-center"><a data-action="delete" href="#"><i class="glyphicon glyphicon-trash"></i></a>' +
+                    '&nbsp; &nbsp; <a data-action="export" href="#"><i class="glyphicon glyphicon-save"></i></a></td>' +
+                  '</tr>');
+                  if (isPrivateIdentity) {
+                    $privateIdentities.append($el1);
+                    $el1.click(function(e){
+                      if ($(e.target).parent().data('action') == 'delete') {
+                        // delete
+                        keyStorage.deleteFirst(obj.name).then(function(){
+                          module.refreshIdentities();
+                        });
+                        e.preventDefault();
+                      } else if ($(e.target).parent().data('action') == 'export') {
+                        // export
+                        module.setActiveIdentity(obj);
+                        module.exportIdentity();
+                        e.preventDefault();
+                      } else {
+                        // set active
+                        $privateIdentities.find('tr').removeClass('info');
+                        $el1.addClass('info');
+                        module.setActiveIdentity(obj);
+                        $('#navbar a[href="#notes"]').tab('show');
+                      }
+                    });
+                  } else {
+                    $publicIdentities.append($el1);
+                    $el1.click(function(e){
+                      if ($(e.target).parent().data('action') == 'delete') {
+                        // delete
+                        keyStorage.deleteFirst(obj.name).then(function(){
+                          module.refreshIdentities();
+                        });
+                        e.preventDefault();
+                      } else if ($(e.target).parent().data('action') == 'export') {
+                        // export
+                        module.setActiveIdentity(obj);
+                        module.exportIdentity();
+                        e.preventDefault();
+                      } else {
+                        e.preventDefault();
+                      }
+                    });
+                  }
+                  // append debug
+                  var $el2 = $('<a href="#" class="list-group-item">' +
+                    '<h4 class="list-group-item-heading">' + obj.name + '</h4>' + usageLabels +
+                    '<div class="list-group-item-pre">' + publicKeyFingerprintHex + '</div>' +
+                    '<div class="list-group-item-pre">' + verifyKeyFingerprintHex + '</div>' +
+                  '</a>');
+                  $debugIdentities.append($el2);
+                  $el2.click(function(){
+                    // set active
+                    $debugIdentities.find('a').removeClass('active');
+                    $el2.addClass('active');
+                    module.setActiveIdentity(obj);
+                  });
+                });
+              } else {
+                $('#notifyCreateIdentity').removeClass('hidden');
+              }
+              done();
+            }).catch(function(err){
+              console.log(err);
+              fail(err);
             });
-          }).catch(function(err){
-            console.log(err);
           });
         },
 
         startApp: function() {
+
+          // Set states
+          $('#checkboxAnonymous').prop('checked', true);
+          $('#checkboxDigitallySign').prop('checked', true);
+          $('#createNoteSignDigitally').removeClass('show').addClass('hide');
 
           // Attach handlers
           $('#btnClearDebug').click(function(){
@@ -421,6 +476,21 @@
             });
           });
 
+          $('#checkboxAnonymous').click(function(){
+            // check if the item is checked
+            var digitallySign = $('#checkboxAnonymous').is(":checked");
+            if (digitallySign) {
+              $('#createNoteSignDigitally').removeClass('show').addClass('hide');
+            } else {
+              // show digital signature option if available
+              if (module.activeIdentity.signingKey && module.activeIdentity.verifyKey) {
+                $('#createNoteSignDigitally').removeClass('hide').addClass('show');
+              } else {
+                $('#createNoteSignDigitally').removeClass('show').addClass('hide');
+              }
+            }
+          });
+
           $('#btnSwapOutputWithInput').click(function(){
             var input = $('#input').val();
             var output = $('#output').val();
@@ -447,6 +517,52 @@
             module.verify();
           });
 
+          $('#btnDecryptAddToKnownSenders').click(function() {
+            // set the current modal as pending
+            module.pendingNoteModal = true;
+            // hide the modal
+            $('#modalDecryptNote').modal('hide');
+            // export the key
+            var identity = {
+              publicKey: module.activeNote.result.publicKey,
+              verifyKey: module.activeNote.result.verifyKey,
+              privateKey: undefined,
+              signingKey: undefined
+            };
+            cryptography.exportIdentity(
+              module.activeNote.result.publicKey,
+              null,
+              null,
+              module.activeNote.result.verifyKey
+            )
+            .then(function(exported) {
+              // convert result to base64
+              var publicIdentityB64 = SNPG_PUB_HEADER +
+                utils.convertUint8ArrayToBase64(exported.publicIdentityData) +
+                '\n' + SNPG_PUB_FOOTER;
+              var privateIdentityB64 = SNPG_PRV_HEADER +
+                utils.convertUint8ArrayToBase64(exported.privateIdentityData) +
+                '\n' + SNPG_PRV_FOOTER + '\n';
+              // populate modal
+              var identityB64 = '';
+              if (exported.publicIdentityData.length>4) {
+                // we have public identity
+                identityB64 = publicIdentityB64;
+              }
+              if (exported.privateIdentityData.length>4) {
+                // we have public identity
+                if (identityB64.length!==0) {
+                  identityB64 += '\n\n';
+                }
+                identityB64 += privateIdentityB64;
+              }
+              // fill-in the import key
+              $('#importIdentityData').val(identityB64);
+              // open the import modal
+              $('#modalImportIdentity').modal('show');
+            });
+          });
+
           $('#btnDecryptTrustSender').click(function(){
             if (module.targetIdentity) {
               var identity = module.targetIdentity;
@@ -460,6 +576,7 @@
               });
             }
           });
+
           $('#btnDecryptRevokeTrustSender').click(function(){
             if (module.targetIdentity) {
               var identity = module.targetIdentity;
@@ -483,8 +600,14 @@
               // save changes to database
               keyStorage.updateData(identity).then(function(){
               }).then(function(){
-                // reopen the modal
-                module.openDecryptModal(module.activeNote);
+                // save current identity
+                var curIdentity = module.activeIdentity;
+                // refresh the identities list
+                module.refreshIdentities().then(function(){
+                  module.activeIdentity = curIdentity;
+                  // reopen the modal
+                  module.openDecryptModal(module.activeNote);
+                });
               });
             }
           });
@@ -498,23 +621,44 @@
             var $list = $('#selectRecipientList');
             $list.empty();
             _.forEach(module.identities, function(obj) {
-              var $el = $('<option value="' + utils.convertUint8ArrayToHex(obj.publicKeyFingerprint, '') + '" data-subtext="' + utils.convertUint8ArrayToHex(obj.publicKeyFingerprint, ':') + '">' + obj.name + '</option>');
-              $list.append($el);
+              // skip our own identity
+              if (!utils.compareTwoUint8Arrays(module.activeIdentity.publicKeyFingerprint, obj.publicKeyFingerprint)) {
+                var $el = $('<option value="' + utils.convertUint8ArrayToHex(obj.publicKeyFingerprint, '') + '" data-subtext="' + utils.convertUint8ArrayToHex(obj.publicKeyFingerprint, ':') + '">' + obj.name + '</option>');
+                $list.append($el);
+              }
             });
             $list.selectpicker('render');
             $list.selectpicker('refresh');
+            /*
             // show digital signature option if available
             if (module.activeIdentity.signingKey && module.activeIdentity.verifyKey) {
               $('#createNoteSignDigitally').removeClass('hide').addClass('show');
             } else {
               $('#createNoteSignDigitally').removeClass('show').addClass('hide');
             }
+            */
             // show modal
             $('#modalCreateNote').modal('show');
           });
 
+          $('#btnCreateNoteCancel').click(function(){
+            // hide modal
+            $('#modalCreateNote').modal('hide');
+            $('#inputNote').val('');
+            $('#checkboxAnonymous').prop('checked', true);
+            $('#checkboxDigitallySign').prop('checked', true);
+            $('#createNoteSignDigitally').removeClass('show').addClass('hide');
+          });
+
           $('#btnCreateNoteSave').click(function(){
-            var digitallySign = $('#checkboxDigitallySign').is(":checked");
+            var anonymous = $('#checkboxAnonymous').is(":checked");
+            var includePublicKey = anonymous?false:true;
+            var digitallySign;
+            if (anonymous) {
+              digitallySign = false;
+            } else {
+              digitallySign = $('#checkboxDigitallySign').is(":checked");
+            }
             var targetFingerprint = $('#selectRecipientList').val();
             _.forEach(module.identities, function(obj) {
               var fingerprint = utils.convertUint8ArrayToHex(obj.publicKeyFingerprint, '');
@@ -525,7 +669,7 @@
             });
             var plaintext = $('#inputNote').val();
             $('#input').val(plaintext);
-            module.encrypt(digitallySign)
+            module.encrypt(digitallySign, includePublicKey)
             .then(function() {
               return module.saveNote();
             })
@@ -533,7 +677,9 @@
               // hide modal
               $('#modalCreateNote').modal('hide');
               $('#inputNote').val('');
-              $('#checkboxDigitallySign').attr('checked', false);
+              $('#checkboxAnonymous').prop('checked', true);
+              $('#checkboxDigitallySign').prop('checked', true);
+              $('#createNoteSignDigitally').removeClass('show').addClass('hide');
             });
           });
 
@@ -578,27 +724,44 @@
               })
               .then(function(hash) {
                 identity.publicKeyFingerprint = new Uint8Array(hash);
-                return cryptography.exportKey(identity.verifyKey, 'spki');
+                if (identity.verifyKey) {
+                  return cryptography.exportKey(identity.verifyKey, 'spki');
+                } else {
+                  return cryptography.returnResolve();
+                }
               })
               .then(function(result) {
-                return window.crypto.subtle.digest({ name: "SHA-1" }, result);
+                if (result) {
+                  return window.crypto.subtle.digest({ name: "SHA-1" }, result);
+                } else {
+                  return cryptography.returnResolve();
+                }
               })
               .then(function(hash) {
-                identity.verifyKeyFingerprint = new Uint8Array(hash);
+                if (hash) {
+                  identity.verifyKeyFingerprint = new Uint8Array(hash);
+                }
                 // Save one key to keyStorage
-                console.log('Saving', identity);
                 keyStorage.saveData(identity).then(function(){
-                  module.refreshIdentities();
-                  $('#modalImportIdentity').modal('hide');
-                  $('#importIdentityName').val('');
-                  $('#importIdentityData').val('');
-                  $('#checkboxImportExportable').attr('checked', false);
+                  module.refreshIdentities().then(function(){
+                    $('#modalImportIdentity').modal('hide');
+                    $('#importIdentityName').val('');
+                    $('#importIdentityData').val('');
+                    $('#checkboxImportExportable').attr('checked', false);
+                    // check if we have pending modals
+                    if (module.pendingNoteModal) {
+                      // reopen the modal
+                      module.pendingNoteModal = false;
+                      module.openDecryptModal(module.activeNote);
+                    }
+                  });
                 }).catch(function(e){
                   debug.error('<b>Digest on publicKey failed!</b> ' + e.message);
                 });
               })
               .catch(function(err) {
                 debug.error('<b>Error while importing identity</b><br />Code:' + err.code + '<br />Message:' + err.message);
+                alert('Error while importing the identity. Please check the input and try again!');
               });
             }
           });
@@ -668,14 +831,19 @@
           // Attach debug to debug div element
           debug.attach(document.getElementById('console'));
 
-          module.refreshIdentities();
-          module.refreshNotes();
-
           // Check Web Cryptography API support
           if (cryptography.isSupported()) {
             debug.info('Web Cryptography API is supported');
+            module.refreshIdentities().then(function(){
+              module.setActiveIdentity();
+              module.refreshNotes();
+              setInterval(function(){
+                module.refreshNotes();
+              }, 1000*30);
+            });
           } else {
             debug.error('Web Cryptography API is NOT supported!');
+            alert('This example application requires support for Web Cryptography API!');
           }
         },
 
@@ -741,17 +909,17 @@
           }
         },
 
-        encrypt: function(sign) {
+        encrypt: function(createSignature, includePublicKey) {
           return new Promise(function(resolve, reject) {
             var data = $('#input').val();
-            var signingKey = sign?module.activeIdentity.signingKey:undefined;
             cryptography.encryptAndSign(
               asymmetricAlgorithm, symmetricAlgorithm, signingAlgorithm,
               data,
               module.targetIdentity.publicKey, // used for encrypting the data
-              signingKey, // used for signing the data
-              module.activeIdentity.verifyKey, // used for includind senders verify key
-              module.activeIdentity.publicKey) // used for including senders public key
+              createSignature?module.activeIdentity.signingKey:undefined, // used for signing the data
+              createSignature?module.activeIdentity.verifyKey:undefined, // used for including senders verify key
+              includePublicKey?module.activeIdentity.publicKey:undefined // used for including senders public key
+            )
             .then(function(result){
               var data = new Uint8Array(result.packedCipher);
               debug.info('<b>Encrypted:</b><br />' + utils.convertUint8ArrayToHexView(data, 16, '\u00B7'));
@@ -773,13 +941,16 @@
             if (module.activeIdentity && data.length>0) {
               var encryptedDataFromBase64 = utils.convertBase64ToUint8Array(data);
               cryptography.decryptAndVerify(
-                asymmetricAlgorithm, symmetricAlgorithm, signingAlgorithm, digestAlgorithm,
+                asymmetricAlgorithm,
+                symmetricAlgorithm,
+                signingAlgorithm,
+                digestAlgorithm,
                 encryptedDataFromBase64,
                 module.activeIdentity.privateKey)
               .then(function(result) {
                 module.setActiveData(result);
                 var plaintext = utils.convertUint8ArrayToText(result.plaintextUint8Array);
-                if (result.digitalSignature.length!==0) {
+                if (result.signed) {
                   if (result.digitalSignatureValid) {
                     debug.log(
                       '<b>Decrypted (Digital Signature verified):</b><br />' + utils.convertUint8ArrayToHexView(result.plaintextUint8Array, 16, '\u00B7')
@@ -803,7 +974,7 @@
                 reject(e.message);
               });
             } else {
-              reject('No active identity or data');
+              resolve(); //reject('No active identity or data');
             }
           });
         },
@@ -918,7 +1089,7 @@
               '\n' + SNPG_PUB_FOOTER;
             var privateIdentityB64 = SNPG_PRV_HEADER +
               utils.convertUint8ArrayToBase64(exported.privateIdentityData) +
-              '\n' + SNPG_PRV_FOOTER;
+              '\n' + SNPG_PRV_FOOTER + '\n';
 
             // populate modal
             var identityB64 = '';
@@ -974,17 +1145,17 @@
 
         digest: function() {
           var msg = $('#input').val();
-          debug.log('<b>Plain text:</b><br />' + utils.convertUint8ArrayToHexView(utils.convertTextToUint8Array(msg), 16, '\u00B7'));
+          debug.log('<b>Plain text:</b><br />' + utils.convertUint8ArrayToHexView(utils.convertTextToUint8Array(msg), 10, '\u00B7'));
           try {
             window.crypto.subtle.digest(
               {
-                name: "SHA-512",
+                name: "SHA-1",
               },
               new Uint8Array(utils.convertTextToUint8Array(msg)) //The data you want to hash as an ArrayBuffer
             )
             .then(function(hash) {
               var data = new Uint8Array(hash);
-              debug.info('<b>Digest:</b><br />' + utils.convertUint8ArrayToHexView(data, 16, '\u00B7'));
+              debug.info('<b>Digest:</b><br />' + utils.convertUint8ArrayToHexView(data, 10, '\u00B7'));
               var base64 = utils.convertUint8ToBase64(data);
               $('#output').val(base64);
             })

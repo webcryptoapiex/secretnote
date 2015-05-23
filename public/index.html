@@ -49,7 +49,7 @@
           <div class="modal-body">
             <h3><label for="modalDecryptSenderName">Sender:</label> <span class="label" id="modalDecryptSenderName"></span></h3>
             <div class="row">
-              <label class="col-sm-3">Encryption-Key fingerprint:</label>
+              <label class="col-sm-3">Encryption-key fingerprint:</label>
               <span id="modalDecryptSenderFingerprint"></span><br />
             </div>
             <div class="row">
@@ -82,7 +82,7 @@
             <div class="alert alert-info hide" id="modalDecryptDigitalSignatureValidButNotTrusted">
               <p><i class="glyphicon glyphicon-alert"></i> <b>Warning:</b> Digital Signature is valid but key used for signing is not current.</p>
               <p>
-                <button type="button" class="btn btn-default" id="btnDecryptTrustSigningKey">Trust this key</button>
+                <button type="button" class="btn btn-default" id="btnDecryptTrustSigningKey">Trust this signature</button>
               </p>
             </div>
             <div class="alert alert-success hide" id="modalDecryptDigitalSignatureValid">
@@ -122,8 +122,12 @@
                 <label for="exampleInputText">Note contents:</label>
                 <textarea type="text" rows="7" class="form-control textarea" id="inputNote" placeholder="contents"></textarea>
               </div>
+              <div class="checkbox">
+                <input type="checkbox" id="checkboxAnonymous">
+                <label for="checkboxAnonymous">Anonymous message (your public identity is not shared with the recipient)</label>
+              </div>
               <div class="alert alert-success hide" id="createNoteSignDigitally">
-                <p><i class="glyphicon glyphicon-info"></i> If you digitally sign the note, the recipient can verify that your identity was used to sign the note. Please note that it also means that the note is not anonymous anymore since the recipient knows who sent the note. As a bonus the recipient also receives your public-key so that the recipient can reply to your note.</p>
+                <p id="createNoteSignDigitallyEnabled"><i class="glyphicon glyphicon-info"></i> If you digitally sign the note, the recipient can verify that your identity was used to sign the note.</p>
                 <div class="checkbox">
                   <input type="checkbox" id="checkboxDigitallySign">
                   <label for="checkboxDigitallySign">Digitally sign</label>
@@ -132,8 +136,8 @@
             </form>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-primary" id="btnCreateNoteSave">Save</button>
+            <button type="button" class="btn btn-default" id="btnCreateNoteCancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="btnCreateNoteSave">Send</button>
           </div>
         </div>
       </div>
@@ -150,16 +154,16 @@
           <div class="modal-body">
             <form role="form">
               <p>
-                Creating an <b>identity</b> allows you to digitally sign sent message and receive messages from other users.
+                Creating an <b>identity</b> allows you to digitally sign a sent message and receive messages from other users.
               </p>
               <!-- Tab panes -->
               <div class="form-group">
                 <label for="inputName">Anonymous name</label>
                 <input type="text" class="form-control" id="inputName" placeholder="Enter name">
-                <p class="help-block">Please note that you never should disclose anything personal like your real name or email here.</p>
+                <p class="help-block">Please note that you should never disclose anything personal like your real name or email here.</p>
               </div>
               <div class="alert alert-success">
-                <i class="glyphicon glyphicon-info-sign"></i> Your identity has public and private side. You can safely share your public identity to anybody, but you must keep the private part secret to protect your identity.
+                <i class="glyphicon glyphicon-info-sign"></i> Your identity has a public and private side. You can safely share your public identity to anybody, but you must keep the private part secret to protect your identity.
               </div>
               <div class="alert alert-danger">
                 <p>
@@ -191,7 +195,7 @@
           <div class="modal-body">
             <form role="form">
               <p>
-                Importing an <b>private identity</b> allows you to digitally sign sent message and receive messages from other users. Importing an <b>public identity</b> allows you to send messages to the user.
+                Importing an <b>private identity</b> allows you to digitally sign a sent message and receive messages from other users. Importing an <b>public identity</b> allows you to send messages to the user.
               </p>
               <div class="form-group">
                 <label for="importIdentityName">Anonymous name</label>
@@ -199,7 +203,7 @@
                 <p class="help-block">Please note that you never should disclose anything personal like your real name or email here.</p>
               </div>
               <div class="alert alert-success">
-                <i class="glyphicon glyphicon-info-sign"></i> Your <b>private identity</b> has public and private side. You can safely share your public identity to anybody, but you must keep the private part secret to protect your identity. <b>public identity</b> only has public side.
+                <i class="glyphicon glyphicon-info-sign"></i> Your <b>private identity</b> has a public and private side. You can safely share your public identity to anybody, but you must keep the private part secret to protect your identity. <b>public identity</b> only has public side.
               </div>
               <div class="form-group textarea">
                 <label for="importIdentityData">Identity</label>
@@ -239,7 +243,7 @@
               </p>
               <h3><label for="modalExportIdentityName">Name:</label> <span class="label label-success" id="modalExportIdentityName"></span></h3>
               <div class="row">
-                <label class="col-sm-3">Encryption-Key fingerprint:</label>
+                <label class="col-sm-3">Encryption-key fingerprint:</label>
                 <span id="modalExportIdentityKeyFingerprint"></span><br />
               </div>
               <div class="row">
@@ -289,7 +293,7 @@
         <div role="tabpanel" class="tab-pane fade in active" id="notes">
           <div class="jumbotron hidden" id="notifyCreateIdentity">
             <h1>Secret Notes</h1>
-            <p>Welcome! Please create new identity to start using Secret Notes!</p>
+            <p>Welcome! Please create a new identity to start using Secret Notes!</p>
             <p><a class="btn btn-primary btn-lg" href="#" role="button" id="btnConfigureKeys" data-toggle="modal" data-target="#modalGenerateIdentity">Create identity</a></p>
           </div>
           <div class="jumbotron hidden" id="notifySelectIdentity">
@@ -525,9 +529,12 @@ SOFTWARE.</pre>
     <script src="vendor/lodash/lodash.min.js"></script>
     <!-- Include our modules -->
     <script src="js/modules/cryptography.js"></script>
-    <script src="js/modules/backend.js"></script>
+    <script src="js/modules/backendLocal.js"></script>
+    <script src="js/modules/backendRemote.js"></script>
     <script src="js/modules/debug.js"></script>
     <script src="js/modules/utils.js"></script>
+    <!-- Include configuration -->
+    <script src="js/config.js"></script>
     <!-- Include our main script last -->
     <script src="js/app.js"></script>
   </body>

@@ -12,6 +12,7 @@
     var self = this;
 
     var module = {
+
       stringPadRight: function(str, len, ch) {
         var chx = ch || ' ';
         while(str.length < len) {
@@ -47,15 +48,6 @@
           data[i] = s.charCodeAt(i);
         }
         return data;
-      },
-
-      utf8_to_b64: function(str) {
-        return window.btoa(unescape(encodeURIComponent(str)));
-      },
-
-      decodeBase64url: function(str) {
-        str = (str + '==').slice(0, str.length + (str.length % 2));
-        return str.replace(/-/g, '+').replace(/_/g, '/');
       },
 
       convertTextToArrayBuffer: function(s) {
@@ -177,7 +169,7 @@
 
       convertUint8ArrayToHex: function(data, sep) {
         var a, h = '';
-        var ch = sep===null?' ':sep;
+        var ch = sep?sep:'';
         for (var i=0, len=data.length; i!==len; ++i) {
           a = data[i];
           h += i>0?ch:'';
@@ -185,6 +177,15 @@
           h += a.toString(16);
         }
         return h;
+      },
+
+      convertHexToUint8Array: function(data) {
+        var len = data.length;
+        var a = new Uint8Array(len/2);
+        for (var i=0, j=0; i!==len; i+=2) {
+          a[j++] = parseInt(data.substr(i, 2), 16);
+        }
+        return a;
       },
 
       convertUint8ArrayToHexView: function(data, width, sep) {

@@ -10,14 +10,11 @@ var privateKey  = fs.readFileSync('../sslcert/server.key', 'utf8');
 var certificate = fs.readFileSync('../sslcert/server.crt', 'utf8');
 var credentials = { key: privateKey, cert: certificate };
 
-/*
-  Content Security Policy headers
-
-  default: block all
-  self: script, style, img, font
- */
 app.use(function(req, res, next) {
   /*
+  // Content Security Policy headers
+  // default: block all
+  // self: script, style, img, font
   res.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'");
   res.setHeader("X-Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'");
   res.setHeader("X-WebKit-CSP", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'");
@@ -26,7 +23,6 @@ app.use(function(req, res, next) {
   return next();
 });
 app.use(express.static(path.join(__dirname, "../public")));
-// not bundled anymore: app.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 
 var httpServer = http.createServer(app);
 var httpsServer = https.createServer(credentials, app);

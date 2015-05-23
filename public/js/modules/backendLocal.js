@@ -11,8 +11,8 @@
   var IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction;
   var IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange || window.msIDBKeyRange;
 
-  // Backend Class
-  app.Backend = function(databaseName, objectStoreName, indexes, keyPath) {
+  // BackendLocal Class
+  app.BackendLocal = function(databaseName, objectStoreName, indexes, keyPath) {
     this.dbHandle = undefined;
     this.dbName = databaseName;
     this.dbObjectStoreName = objectStoreName;
@@ -21,7 +21,7 @@
   };
 
   // Add methods
-  app.Backend.prototype.delete = function() {
+  app.BackendLocal.prototype.delete = function() {
     var self = this;
     // delete the database
     return new Promise(function(resolve, reject){
@@ -36,7 +36,7 @@
     });
   };
 
-  app.Backend.prototype.open = function() {
+  app.BackendLocal.prototype.open = function() {
     var self = this;
     // open the database
     return new Promise(function(resolve, reject){
@@ -45,12 +45,12 @@
         reject('Error: Database open failed.');
       };
       request.onsuccess = function(event) {
-        console.log('Backend.onsuccess');
+        console.log('BackendLocal.onsuccess');
         self.dbHandle = request.result;
         resolve(self.dbHandle);
       };
       request.onupgradeneeded = function(event) {
-        console.log('Backend.onupgradeneeded');
+        console.log('BackendLocal.onupgradeneeded');
         self.dbHandle = request.result;
         if (!self.dbHandle.objectStoreNames.contains(self.dbObjectStoreName)) {
           var objectStore = self.dbHandle.createObjectStore(self.dbObjectStoreName, { autoIncrement: true, keyPath: self.dbKeyPath });
@@ -64,7 +64,7 @@
     });
   };
 
-  app.Backend.prototype.getAllData = function() {
+  app.BackendLocal.prototype.getAllData = function() {
     var self = this;
     // get all data
     return new Promise(function(resolve, reject){
@@ -90,7 +90,7 @@
     });
   };
 
-  app.Backend.prototype.getAllDataByIndex = function(index, key) {
+  app.BackendLocal.prototype.getAllDataByIndex = function(index, key) {
     var self = this;
     // get all data
     return new Promise(function(resolve, reject){
@@ -122,7 +122,7 @@
     });
   };
 
-  app.Backend.prototype.getFirstByIndex = function(index, data) {
+  app.BackendLocal.prototype.getFirstByIndex = function(index, data) {
     var self = this;
     // find (first) data from specified index
     return new Promise(function(resolve, reject){
@@ -142,7 +142,7 @@
     });
   };
 
-  app.Backend.prototype.deleteFirst = function(data) {
+  app.BackendLocal.prototype.deleteFirst = function(data) {
     var self = this;
     // find (first) data from specified index
     return new Promise(function(resolve, reject){
@@ -162,7 +162,7 @@
     });
   };
 
-  app.Backend.prototype.getAllByIndex = function(index) {
+  app.BackendLocal.prototype.getAllByIndex = function(index) {
     var self = this;
     // find (first) data from specified index
     return new Promise(function(resolve, reject){
@@ -188,7 +188,7 @@
     });
   };
 
-  app.Backend.prototype.saveData = function(data) {
+  app.BackendLocal.prototype.saveData = function(data) {
     var self = this;
     // append data
     return new Promise(function(resolve, reject){
@@ -214,7 +214,7 @@
     });
   };
 
-  app.Backend.prototype.updateData = function(data) {
+  app.BackendLocal.prototype.updateData = function(data) {
     var self = this;
     // append data
     return new Promise(function(resolve, reject){
@@ -240,7 +240,7 @@
     });
   };
 
-  app.Backend.prototype.clear = function() {
+  app.BackendLocal.prototype.clear = function() {
     var self = this;
     // delete all data
     return new Promise(function(resolve, reject){
@@ -259,7 +259,7 @@
     });
   };
 
-  app.Backend.prototype.close = function() {
+  app.BackendLocal.prototype.close = function() {
     var self = this;
     // close the database
     return new Promise(function(resolve, reject){

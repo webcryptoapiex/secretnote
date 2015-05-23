@@ -27,24 +27,12 @@
 
     var module = {
 
-      checkSupport: function() {
-        // TODO: implement the actual algorithm support checking
-        // by running different tests.
-        return true;
-      },
-
       isSupported: function() {
-        // check that we have crypto interface
+        // check that we have Crypto interface
         if ("crypto" in window) {
-          // check that we have subtleCryto interface
+          // check that we have SubtleCryto interface
           if ("subtle" in window.crypto) {
-            // check that we can use RSA-OAEP algorithm with encrypt, decrypt, sign, digest, generateKey, exportKey
-            var algo = ["RSA-OAEP"];
-            var methods = ["encrypt", "decrypt", "sign", "digest", "generateKey", "exportKey"];
-            var keyUsage = ["encrypt", "decrypt"];
-            if (module.checkSupport(algo, methods, {keyUsage: keyUsage})) {
-              return true;
-            }
+            return true;
           }
         }
         return false;
@@ -140,15 +128,30 @@
           })
           .then(function(){
             // Concat arrays
-            exported.publicIdentityData = app.utils.packUint8Arrays(
-              exported.publicKeyData,
-              exported.verifyKeyData
-            );
-            exported.privateIdentityData = app.utils.packUint8Arrays(
-              exported.privateKeyData,
-              exported.signingKeyData
-            );
+            if (!exported.verifyKeyData) {
+              exported.publicIdentityData = app.utils.packUint8Arrays(
+                exported.publicKeyData
+              );
+            } else {
+              exported.publicIdentityData = app.utils.packUint8Arrays(
+                exported.publicKeyData,
+                exported.verifyKeyData
+              );
+            }
+            if (!exported.signingKeyData) {
+              exported.privateIdentityData = app.utils.packUint8Arrays(
+                exported.privateKeyData
+              );
+            } else {
+              exported.privateIdentityData = app.utils.packUint8Arrays(
+                exported.privateKeyData,
+                exported.signingKeyData
+              );
+            }
             resolve(exported);
+          })
+          .catch(function(err){
+            reject(err);
           });
         });
       },
@@ -159,10 +162,15 @@
 
           function importKeyOrContinue(key, alg, format, exportable, usage) {
             return new Promise(function(done, fail) {
-              // Try to import key
-              module.importKey(key, alg, format, exportable, usage)
-              .then(function(result) { done(result); })
-              .catch(function(err) { done(); });
+              if (key) {
+                // Try to import key
+                module.importKey(key, alg, format, exportable, usage)
+                .then(function(result) { done(result); })
+                .catch(function(err) { done(); });
+              } else {
+                // Fail but continue
+                done();
+              }
             });
           }
 
@@ -211,68 +219,89 @@
           var state = {};
           state.plaintextUint8Array = app.utils.convertTextToUint8Array(plaintext);
 
-          // generate IV for symmetric encryption
+          state.signed = signingKey?true:false;
+          state.hasSignature = state.signed?true:false;
+          state.hasPublicKey = publicKey?true:false;
+
+          // generate IV for symmetric encryption (symmetricIV)
           state.symmetricIV = window.crypto.getRandomValues(new Uint8Array(16));
 
+          // generate symmetric key (symmetricKey)
           module.generateKeys(symAlg, true, ['encrypt', 'decrypt'])
           .then(function(symmetricKey) {
             state.symmetricKey = symmetricKey;
+            // export generated key
             return module.exportKey(state.symmetricKey, 'raw');
           })
           .then(function(exportedSymmetricKey) {
             state.exportedSymmetricKey = new Uint8Array(exportedSymmetricKey);
-            if (verifyKey) {
+            if (state.signed && verifyKey) {
+              // if verify-key is provided, export the key
               return module.exportKey(verifyKey, 'spki');
             } else {
+              // if verify-key is not provided, continue to next step
               return module.returnResolve(false);
             }
           })
           .then(function(exportedVerifyKey) {
-            if (signingKey) {
+            if (state.signed && verifyKey) {
               state.exportedVerifyKey = new Uint8Array(exportedVerifyKey);
+              // if signing-key was provided, sign the plaintext
               return module.signData(signingAlg, signingKey, state.plaintextUint8Array);
             } else {
+              // if signing-key was not provided, continue to next step
               state.exportedVerifyKey = new Uint8Array();
               return module.returnResolve();
             }
           })
           .then(function(digitalSignature) {
             state.digitalSignature = new Uint8Array(digitalSignature);
-            if (publicKey) {
+            if (state.hasPublicKey) {
+              // if public-key was provided, export the key
               return module.exportKey(publicKey, 'spki');
             } else {
+              // if public-key was not provided, continue to next step
               return module.returnResolve();
             }
           })
           .then(function(exportedPublicKey) {
-            state.exportedPublicKey = new Uint8Array(exportedPublicKey);
-            if (state.exportedPublicKey) {
+            if (state.hasPublicKey) {
+              state.exportedPublicKey = new Uint8Array(exportedPublicKey);
+            }
+            if (state.signed) {
+              // if signing, create package from: [ plaintext, digitalsignature, verifyKey, (optional)publicKey ]
               state.dataToEncrypt = app.utils.packUint8Arrays(
+                new Uint8Array([1, state.hasPublicKey?1:0]),
                 state.plaintextUint8Array,
                 state.digitalSignature,
                 state.exportedVerifyKey,
                 state.exportedPublicKey
               );
             } else {
+              // if not signing, create package from: [ plaintext, (optional)publicKey ]
               state.dataToEncrypt = app.utils.packUint8Arrays(
+                new Uint8Array([0, state.hasPublicKey?1:0]),
                 state.plaintextUint8Array,
-                state.digitalSignature,
-                state.exportedVerifyKey
+                state.exportedPublicKey
               );
             }
             symAlg.iv = state.symmetricIV;
+            // encrypt the package that was created on previous step
             return module.encryptData(symAlg, state.symmetricKey, state.dataToEncrypt);
           })
           .then(function(encryptedDataArray) {
             state.encryptedPlaintextAndDigitalSignatureAndVerifyKey = new Uint8Array(encryptedDataArray);
+            // create package from: [ symmetricKey, symmetricIV ]
             state.symmetricKeyAndIVpack = app.utils.packUint8Arrays(
               state.exportedSymmetricKey,
               state.symmetricIV
             );
+            // encrypt the package that was created on the previous step
             return module.encryptData(encryptionKey.algorithm, encryptionKey, state.symmetricKeyAndIVpack);
           })
           .then(function(encryptedSymmetricKeyAndIVArray) {
             state.encryptedSymmetricKeyAndIV = new Uint8Array(encryptedSymmetricKeyAndIVArray);
+            // create output package from: [ [plaintext+((optional)digitalsignature+verifykey)+(optionally)publickey] + [symK+symIV] ]
             state.packedCipher = app.utils.packUint8Arrays(
               state.encryptedPlaintextAndDigitalSignatureAndVerifyKey,
               state.encryptedSymmetricKeyAndIV
@@ -280,6 +309,7 @@
             resolve(state);
           })
           .catch(function(err) {
+            // if rejected in any point of the process, report the error
             reject(err);
           });
         });
@@ -287,7 +317,9 @@
 
       decryptAndVerify: function(asymAlg, symAlg, signingAlg, digestAlg, packedCipher, decryptionKey) {
         return new Promise(function(resolve, reject) {
-          var state = {};
+          var state = {
+            signed: false
+          };
 
           var unpackedCipher = app.utils.unpackUint8Arrays(packedCipher);
 
@@ -308,47 +340,53 @@
           })
           .then(function(result) {
             var plaintextAndDigitalSignatureAndVerifyKey = app.utils.unpackUint8Arrays(new Uint8Array(result));
-            state.plaintextUint8Array = plaintextAndDigitalSignatureAndVerifyKey[0];
-            state.digitalSignature = plaintextAndDigitalSignatureAndVerifyKey[1];
-            state.verifyKeyData = plaintextAndDigitalSignatureAndVerifyKey[2];
-            if (plaintextAndDigitalSignatureAndVerifyKey.length > 3) {
-              state.publicKeyData = plaintextAndDigitalSignatureAndVerifyKey[3];
-            } else {
-              state.publicKeyData = undefined;
-            }
-            if (state.digitalSignature.length!==0) {
+            state.hasSignature = plaintextAndDigitalSignatureAndVerifyKey[0][0];
+            state.hasPublicKey = plaintextAndDigitalSignatureAndVerifyKey[0][1];
+            state.plaintextUint8Array = plaintextAndDigitalSignatureAndVerifyKey[1];
+            if (state.hasSignature) {
+              // Is digitally signed
+              state.signed = true;
+              state.digitalSignature = plaintextAndDigitalSignatureAndVerifyKey[2];
+              state.verifyKeyData = plaintextAndDigitalSignatureAndVerifyKey[3];
+              state.publicKeyData = state.hasPublicKey?plaintextAndDigitalSignatureAndVerifyKey[4]:undefined;
               return module.digest(digestAlg, state.verifyKeyData);
             } else {
+              // Not digitally signed
+              state.publicKeyData = state.hasPublicKey?plaintextAndDigitalSignatureAndVerifyKey[2]:undefined;
               return module.returnResolve();
             }
           })
           .then(function(hash) {
-            state.verifyKeyFingerprint = new Uint8Array(hash);
-            if (state.publicKeyData) {
-              return module.importKey(state.publicKeyData, asymAlg, 'spki', false, ['encrypt']);
-            } else {
-              return module.returnResolve();
-            }
-          })
-          .then(function(publicKey) {
-            state.publicKey = publicKey;
-            if (publicKey) {
-              return module.digest(digestAlg, state.publicKeyData);
-            } else {
-              return module.returnResolve();
-            }
-          })
-          .then(function(hash) {
-            state.publicKeyFingerprint = new Uint8Array(hash);
-            if (state.digitalSignature.length!==0) {
+            if (state.signed) {
+              state.verifyKeyFingerprint = new Uint8Array(hash);
               return module.importKey(state.verifyKeyData, signingAlg, 'spki', true, ['verify']);
             } else {
               return module.returnResolve();
             }
           })
           .then(function(result) {
-            if (state.digitalSignature.length!==0) {
+            if (state.signed) {
               state.verifyKey = result;
+            }
+            if (state.publicKeyData) {
+              return module.importKey(state.publicKeyData, asymAlg, 'spki', true, ['encrypt']);
+            } else {
+              return module.returnResolve();
+            }
+          })
+          .then(function(publicKey) {
+            state.publicKey = publicKey;
+            if (state.publicKeyData) {
+              return module.digest(digestAlg, state.publicKeyData);
+            } else {
+              return module.returnResolve();
+            }
+          })
+          .then(function(hash) {
+            if (state.publicKeyData) {
+              state.publicKeyFingerprint = new Uint8Array(hash);
+            }
+            if (state.signed) {
               return module.verifyData(signingAlg, state.verifyKey, state.digitalSignature, state.plaintextUint8Array);
             } else {
               return module.returnResolve(false);

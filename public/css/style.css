@@ -49,6 +49,10 @@ body {
   cursor: pointer;
 }
 
+.theme-notes table a:visited {
+  color: #888;
+}
+
 .theme-notes table .id {
   font-size: 0.9em;
   padding-top: 0.75em;
